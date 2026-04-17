@@ -5,6 +5,7 @@ import os
 import re
 from dataclasses import dataclass
 from typing import Final
+from zoneinfo import ZoneInfo
 
 import gspread
 from aiogram import Bot, Dispatcher, F
@@ -29,6 +30,7 @@ ACTIVITY_OPTIONS: Final[list[str]] = [
 REQUIRED_CHANNELS: Final[list[str]] = ["@denkirsru", "@denkirsceiling"]
 CHECK_SUBSCRIPTIONS_TEXT: Final[str] = "Проверить подписки"
 PHONE_PATTERN: Final[re.Pattern[str]] = re.compile(r"^\+?[0-9()\-\s]{10,20}$")
+MOSCOW_TZ: Final[ZoneInfo] = ZoneInfo("Europe/Moscow")
 
 
 @dataclass(frozen=True)
@@ -37,10 +39,6 @@ class Settings:
     spreadsheet_id: str
     worksheet_name: str
     google_credentials_json: str
-
-    @property
-    def spreadsheet_url(self) -> str:
-        return f"https://docs.google.com/spreadsheets/d/{self.spreadsheet_id}/edit"
 
 
 class RegistrationStates(StatesGroup):
@@ -210,7 +208,7 @@ async def finalize_registration(message: Message, state: FSMContext, bot: Bot, s
         return
 
     payload = {
-        "created_at": message.date.isoformat(),
+        "created_at": message.date.astimezone(MOSCOW_TZ).strftime("%d.%m.%Y %H:%M"),
         "telegram_user_id": str(message.from_user.id),
         "username": message.from_user.username or "",
         "full_name": data["full_name"],
@@ -219,8 +217,7 @@ async def finalize_registration(message: Message, state: FSMContext, bot: Bot, s
     }
     await append_lead(settings, payload)
     await message.answer(
-        "Заявка принята. Спасибо.\n"
-        f"Таблица: {settings.spreadsheet_url}",
+        "Заявка принята. Спасибо.",
         reply_markup=ReplyKeyboardRemove(),
     )
     await state.clear()
