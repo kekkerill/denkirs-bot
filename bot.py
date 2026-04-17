@@ -27,6 +27,7 @@ ACTIVITY_OPTIONS: Final[list[str]] = [
     "Дизайнер/архитектор",
 ]
 REQUIRED_CHANNELS: Final[list[str]] = ["@denkirsru", "@denkirsceiling"]
+CHECK_SUBSCRIPTIONS_TEXT: Final[str] = "Проверить подписки"
 PHONE_PATTERN: Final[re.Pattern[str]] = re.compile(r"^\+?[0-9()\-\s]{10,20}$")
 
 
@@ -37,11 +38,16 @@ class Settings:
     worksheet_name: str
     google_credentials_json: str
 
+    @property
+    def spreadsheet_url(self) -> str:
+        return f"https://docs.google.com/spreadsheets/d/{self.spreadsheet_id}/edit"
+
 
 class RegistrationStates(StatesGroup):
     waiting_for_name = State()
     waiting_for_phone = State()
     waiting_for_activity = State()
+    waiting_for_subscription_check = State()
 
 
 def load_dotenv() -> None:
@@ -103,6 +109,14 @@ def build_activity_keyboard() -> ReplyKeyboardMarkup:
         keyboard=[[KeyboardButton(text=option)] for option in ACTIVITY_OPTIONS],
         resize_keyboard=True,
         one_time_keyboard=True,
+    )
+
+
+def build_subscription_check_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text=CHECK_SUBSCRIPTIONS_TEXT)]],
+        resize_keyboard=True,
+        one_time_keyboard=False,
     )
 
 
@@ -185,14 +199,14 @@ async def finalize_registration(message: Message, state: FSMContext, bot: Bot, s
 
     if not is_subscribed:
         links = "\n".join(
-            f"• https://t.me/{channel.removeprefix('@')}" for channel in missing_channels
+            f"- https://t.me/{channel.removeprefix('@')}" for channel in missing_channels
         )
+        await state.set_state(RegistrationStates.waiting_for_subscription_check)
         await message.answer(
-            "Сначала подпишитесь на все каналы, затем нажмите /start и заполните форму заново:\n"
+            "Подпишитесь на все каналы и нажмите кнопку проверки:\n"
             f"{links}",
-            reply_markup=ReplyKeyboardRemove(),
+            reply_markup=build_subscription_check_keyboard(),
         )
-        await state.clear()
         return
 
     payload = {
@@ -205,7 +219,8 @@ async def finalize_registration(message: Message, state: FSMContext, bot: Bot, s
     }
     await append_lead(settings, payload)
     await message.answer(
-        "Заявка принята. Спасибо.",
+        "Заявка принята. Спасибо.\n"
+        f"Таблица: {settings.spreadsheet_url}",
         reply_markup=ReplyKeyboardRemove(),
     )
     await state.clear()
@@ -261,6 +276,17 @@ def register_handlers(dp: Dispatcher, settings: Settings) -> None:
     @dp.message(RegistrationStates.waiting_for_activity)
     async def invalid_activity_handler(message: Message) -> None:
         await message.answer("Выберите один из вариантов на клавиатуре.")
+
+    @dp.message(RegistrationStates.waiting_for_subscription_check, F.text == CHECK_SUBSCRIPTIONS_TEXT)
+    async def subscription_check_handler(message: Message, state: FSMContext, bot: Bot) -> None:
+        await finalize_registration(message, state, bot, settings)
+
+    @dp.message(RegistrationStates.waiting_for_subscription_check)
+    async def invalid_subscription_check_handler(message: Message) -> None:
+        await message.answer(
+            "Нажмите кнопку «Проверить подписки», когда подпишетесь на оба канала.",
+            reply_markup=build_subscription_check_keyboard(),
+        )
 
 
 async def main() -> None:
