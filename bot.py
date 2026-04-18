@@ -231,10 +231,10 @@ def get_next_raffle_number(settings: Settings) -> int:
     records = worksheet.get_all_records(expected_headers=META_HEADERS)
 
     for index, row in enumerate(records, start=2):
-        if (row.get("key") or "").strip() != META_COUNTER_KEY:
+        if str(row.get(META_HEADERS[0]) or "").strip() != META_COUNTER_KEY:
             continue
 
-        raw_value = str(row.get("value") or "").strip()
+        raw_value = str(row.get(META_HEADERS[1]) or "").strip()
         current_value = int(raw_value) if raw_value.isdigit() else 0
         next_value = current_value + 1
         worksheet.update_cell(index, 2, str(next_value))
@@ -251,8 +251,8 @@ def append_lead_sync(settings: Settings, payload: dict) -> int:
 
     existing_entry = get_existing_entry(
         rows,
-        payload["telegram_user_id"],
-        payload["phone_number"],
+        payload[TELEGRAM_ID_HEADER],
+        payload[PHONE_NUMBER_HEADER],
     )
     if existing_entry:
         row_index, row_data = existing_entry
